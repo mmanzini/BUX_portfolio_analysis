@@ -131,8 +131,12 @@ export const processTransactions = (csvContent: string): {
     });
 
     const totalValue = currentCash + assetsValue;
-    // Unrealized = Total Value - NetInvested - Realized
-    const totalUnrealizedPnL = totalValue - totalInvested - accumulatedRealizedPnL;
+    
+    // Unrealized = Total Value - NetInvested - RealizedComponents
+    // Realized Components = Trading PnL + Dividends - Fees
+    // Therefore: Unrealized = TotalValue - TotalInvested - (TradingPnL + Divs - Fees)
+    // Simplified: Unrealized = TotalValue - TotalInvested - TradingPnL - Divs + Fees
+    const totalUnrealizedPnL = totalValue - totalInvested - accumulatedRealizedPnL - accumulatedDividends + accumulatedFees;
 
     dailySnapshots.push({
       date: format(day, 'yyyy-MM-dd'),

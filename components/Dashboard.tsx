@@ -5,7 +5,8 @@ import NetValueChart from './Charts/NetValueChart';
 import PerformanceChart from './Charts/PerformanceChart';
 import CashFlowChart from './Charts/CashFlowChart';
 import PnLChart from './Charts/PnLChart';
-import { Wallet, TrendingUp, DollarSign, Receipt, Filter, ArrowLeft } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Receipt, Filter, ArrowLeft, CalendarRange, X } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface DashboardProps {
   csvData: string;
@@ -24,146 +25,397 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
 
   // Filters State
   const [selectedYear, setSelectedYear] = useState<string>('All');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>('All');
+  const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
 
   // Filter Logic
   const filteredSnapshots = useMemo(() => {
     return dailySnapshots.filter(s => {
       const year = s.date.substring(0, 4);
-      const month = parseInt(s.date.substring(5, 7));
       
       if (selectedYear !== 'All' && year !== selectedYear) return false;
       
-      if (selectedQuarter !== 'All') {
-        const q = Math.ceil(month / 3);
-        if (`Q${q}` !== selectedQuarter) return false;
-      }
       return true;
     });
-  }, [dailySnapshots, selectedYear, selectedQuarter]);
+  }, [dailySnapshots, selectedYear]);
 
   const latest = filteredSnapshots[filteredSnapshots.length - 1] || dailySnapshots[dailySnapshots.length - 1];
   
   // Safety check if no data after processing
   if (!latest) return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-400 gap-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-gray-500 gap-4">
       <p>No data found in the uploaded file.</p>
-      <button onClick={onReset} className="text-blue-400 hover:underline">Upload another file</button>
+      <button onClick={onReset} className="text-blue-600 hover:underline font-medium">Upload another file</button>
     </div>
   );
 
+  // Total Return (Cumulative)
   const totalReturn = latest.totalRealizedPnL + latest.totalUnrealizedPnL + latest.totalDividends - latest.totalFees;
   const returnPercent = latest.totalInvested !== 0 ? (totalReturn / latest.totalInvested) * 100 : 0;
+
+  // Period Return (Selected Timeframe Only)
+  const firstFiltered = filteredSnapshots[0];
+  const allIndex = dailySnapshots.findIndex(s => s.date === firstFiltered?.date);
+  
+  // Baseline is the snapshot immediately before the selected period.
+  // If we are at the very beginning (allIndex === 0), baseline is zeroed out.
+  const baseline = allIndex > 0 ? dailySnapshots[allIndex - 1] : {
+    totalRealizedPnL: 0,
+    totalUnrealizedPnL: 0,
+    totalDividends: 0,
+    totalFees: 0,
+    totalValue: 0,
+    totalInvested: 0,
+    date: 'Inception',
+    cashBalance: 0,
+    assetsValue: 0,
+  };
+
+  const periodReturn = 
+    (latest.totalRealizedPnL - baseline.totalRealizedPnL) +
+    (latest.totalUnrealizedPnL - baseline.totalUnrealizedPnL) +
+    (latest.totalDividends - baseline.totalDividends) -
+    (latest.totalFees - baseline.totalFees);
+
+  // Calculate Period Percent: Period Return / (Start Equity + Net New Capital)
+  const netInflows = latest.totalInvested - baseline.totalInvested;
+  const periodInvestedCapital = (baseline.totalValue || 0) + netInflows;
+  
+  const periodPercent = periodInvestedCapital !== 0 
+    ? (periodReturn / periodInvestedCapital) * 100 
+    : 0;
 
   // Filter Cashflow for the charts
   const filteredCashFlow = useMemo(() => {
     return cashFlowData.filter(d => {
        const year = d.month.substring(0, 4);
-       const month = parseInt(d.month.substring(5, 7));
 
        if (selectedYear !== 'All' && year !== selectedYear) return false;
-       if (selectedQuarter !== 'All') {
-         const q = Math.ceil(month / 3);
-         if (`Q${q}` !== selectedQuarter) return false;
-       }
        return true;
     });
-  }, [cashFlowData, selectedYear, selectedQuarter]);
+  }, [cashFlowData, selectedYear]);
 
-  return (
-    <div className="min-h-screen bg-slate-900 p-6 md:p-8 space-y-8 font-sans text-slate-200">
-      {/* Header & Controls */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onReset}
-            className="p-2 hover:bg-slate-800 rounded-full transition-colors group"
-            title="Upload new file"
-          >
-            <ArrowLeft className="w-5 h-5 text-slate-500 group-hover:text-white" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Portfolio Analysis</h1>
-            <p className="text-slate-400 mt-1">
-              Performance overview 
-              {selectedYear !== 'All' && ` for ${selectedYear}`}
-              {selectedQuarter !== 'All' && ` ${selectedQuarter}`}
-            </p>
+  // Modal Content Logic
+  const renderKpiDetails = () => {
+    if (!selectedKpi) return null;
+
+    let content = null;
+    let title = '';
+
+    const formatCurrency = (val: number) => `€${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const formatDiff = (val: number) => {
+        const sign = val >= 0 ? '+' : '';
+        return `${sign}${formatCurrency(val)}`;
+    };
+
+    if (selectedKpi === 'portfolio-value') {
+      title = 'Net Portfolio Value Breakdown';
+      content = (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+             <span className="text-gray-600">Cash Balance</span>
+             <span className="font-bold text-gray-900">{formatCurrency(latest.cashBalance)}</span>
+          </div>
+          <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+             <span className="text-gray-600">Asset Value</span>
+             <span className="font-bold text-gray-900">{formatCurrency(latest.assetsValue)}</span>
+          </div>
+          <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+             <span className="font-bold text-gray-900">Total Value</span>
+             <span className="font-bold text-violet-600 text-lg">{formatCurrency(latest.totalValue)}</span>
           </div>
         </div>
+      );
+    } else if (selectedKpi === 'total-return') {
+      title = 'Total Net Return Breakdown';
+      content = (
+        <div className="space-y-3">
+           <div className="flex justify-between items-center text-sm">
+             <span className="text-gray-500">Realized P&L (Trades)</span>
+             <span className={`font-medium ${latest.totalRealizedPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatCurrency(latest.totalRealizedPnL)}
+             </span>
+           </div>
+           <div className="flex justify-between items-center text-sm">
+             <span className="text-gray-500">Unrealized P&L</span>
+             <span className={`font-medium ${latest.totalUnrealizedPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatCurrency(latest.totalUnrealizedPnL)}
+             </span>
+           </div>
+           <div className="flex justify-between items-center text-sm">
+             <span className="text-gray-500">Dividends Collected</span>
+             <span className="font-medium text-emerald-600">{formatCurrency(latest.totalDividends)}</span>
+           </div>
+           <div className="flex justify-between items-center text-sm">
+             <span className="text-gray-500">Fees Paid</span>
+             <span className="font-medium text-rose-600">-{formatCurrency(latest.totalFees)}</span>
+           </div>
+           <div className="border-t border-gray-200 pt-4 mt-2 flex justify-between items-center">
+             <span className="font-bold text-gray-900">Total Net Return</span>
+             <span className={`font-bold text-lg ${totalReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatCurrency(totalReturn)}
+             </span>
+           </div>
+        </div>
+      );
+    } else if (selectedKpi === 'period-return') {
+        const startValue = baseline.totalValue;
+        const endValue = latest.totalValue;
+        const inflow = latest.totalInvested - baseline.totalInvested;
         
-        {/* Filters */}
-        <div className="bg-slate-800 p-1.5 rounded-xl flex flex-wrap gap-2 items-center shadow-lg border border-slate-700/50">
-          <div className="flex items-center px-3 text-slate-400 gap-2 text-sm font-medium border-r border-slate-700 mr-1">
-            <Filter className="w-4 h-4" />
-            <span>Filters</span>
-          </div>
-          
-          {/* Year Filter */}
-          <div className="flex bg-slate-900/50 rounded-lg p-1">
-            <button
-              onClick={() => setSelectedYear('All')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                selectedYear === 'All' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              All Time
-            </button>
-            {availableYears.map(year => (
-              <button
-                key={year}
-                onClick={() => setSelectedYear(year)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  selectedYear === year ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {year}
-              </button>
-            ))}
-          </div>
+        title = `Return Analysis (${selectedYear === 'All' ? 'All Time' : selectedYear})`;
+        content = (
+            <div className="space-y-4">
+                <div className="relative pl-6 border-l-2 border-gray-200 space-y-6">
+                    {/* Start */}
+                    <div className="relative">
+                        <div className="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-gray-300 border-2 border-white"></div>
+                        <div className="flex justify-between items-baseline">
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Start Value</p>
+                                <p className="text-xs text-gray-400">{baseline.date !== 'Inception' ? format(new Date(baseline.date), 'MMM d, yyyy') : 'Inception'}</p>
+                            </div>
+                            <span className="font-mono font-medium text-gray-900">{formatCurrency(startValue)}</span>
+                        </div>
+                    </div>
 
-          {/* Quarter Filter */}
-          <div className="flex bg-slate-900/50 rounded-lg p-1">
-            <button
-              onClick={() => setSelectedQuarter('All')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                selectedQuarter === 'All' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              All Qtrs
-            </button>
-            {['Q1', 'Q2', 'Q3', 'Q4'].map(q => (
-              <button
-                key={q}
-                onClick={() => setSelectedQuarter(q)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  selectedQuarter === q ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
+                    {/* Flows */}
+                    <div className="relative">
+                         <div className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full bg-blue-200 border-2 border-white"></div>
+                         <div className="flex justify-between items-baseline">
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Net Capital Flows</p>
+                                <p className="text-xs text-gray-400">Deposits - Withdrawals</p>
+                            </div>
+                            <span className="font-mono font-medium text-blue-600">{formatDiff(inflow)}</span>
+                         </div>
+                    </div>
+
+                    {/* Return */}
+                    <div className="relative">
+                         <div className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full bg-indigo-200 border-2 border-white"></div>
+                         <div className="flex justify-between items-baseline">
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Period Return</p>
+                                <p className="text-xs text-gray-400">Market Performance</p>
+                            </div>
+                            <span className={`font-mono font-bold ${periodReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {formatDiff(periodReturn)}
+                            </span>
+                         </div>
+                    </div>
+
+                    {/* End */}
+                    <div className="relative">
+                        <div className="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-gray-900 border-2 border-white"></div>
+                         <div className="flex justify-between items-baseline">
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">End Value</p>
+                                <p className="text-xs text-gray-400">{format(new Date(latest.date), 'MMM d, yyyy')}</p>
+                            </div>
+                            <span className="font-mono font-bold text-gray-900">{formatCurrency(endValue)}</span>
+                         </div>
+                    </div>
+                </div>
+            </div>
+        );
+    } else if (selectedKpi === 'realized-pnl') {
+        const netRealizedReturn = latest.totalRealizedPnL + latest.totalDividends - latest.totalFees;
+        title = 'Realized P&L Details (Cumulative)';
+        content = (
+            <div className="space-y-4">
+                <p className="text-sm text-gray-500 mb-4">Breakdown of all realized gains and income accumulated over time.</p>
+                <div className="space-y-3">
+                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span className="text-gray-700 font-medium">Trading P&L</span>
+                        </div>
+                        <span className={`font-bold ${latest.totalRealizedPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(latest.totalRealizedPnL)}
+                        </span>
+                     </div>
+                     
+                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span className="text-gray-700 font-medium">Dividends</span>
+                        </div>
+                        <span className="font-bold text-emerald-600">
+                            +{formatCurrency(latest.totalDividends)}
+                        </span>
+                     </div>
+                     
+                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                            <span className="text-gray-700 font-medium">Fees Paid</span>
+                        </div>
+                        <span className="font-bold text-rose-600">
+                            -{formatCurrency(latest.totalFees)}
+                        </span>
+                     </div>
+                     
+                     <div className="border-t border-gray-200 pt-3 flex justify-between items-center mt-2">
+                        <span className="font-bold text-gray-900">Net Realized Result</span>
+                        <span className={`font-bold text-lg ${netRealizedReturn >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(netRealizedReturn)}
+                        </span>
+                     </div>
+                </div>
+            </div>
+        );
+    } else if (selectedKpi === 'unrealized-pnl') {
+        const netRealizedReturn = latest.totalRealizedPnL + latest.totalDividends - latest.totalFees;
+        title = 'Unrealized P&L Calculation';
+        content = (
+            <div className="space-y-4">
+                <p className="text-sm text-gray-500 mb-4">Derived from current portfolio value minus cost basis.</p>
+                <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Portfolio Total Value</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(latest.totalValue)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-500 flex items-center gap-2">
+                             <span className="text-rose-400 font-bold">-</span> Net Invested Capital
+                        </span>
+                        <span className="text-gray-600">{formatCurrency(latest.totalInvested)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+                         <span className="text-gray-500 flex items-center gap-2">
+                             <span className="text-rose-400 font-bold">-</span> Net Realized Result
+                             <span className="text-xs text-gray-400">(Trades + Divs - Fees)</span>
+                        </span>
+                        <span className="text-gray-600">{formatCurrency(netRealizedReturn)}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pt-1">
+                        <span className="font-bold text-gray-900">Unrealized P&L</span>
+                        <span className={`font-bold text-lg ${latest.totalUnrealizedPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(latest.totalUnrealizedPnL)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+      <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50/50">
+               <h3 className="font-bold text-gray-900">{title}</h3>
+               <button onClick={() => setSelectedKpi(null)} className="p-1 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+                  <X className="w-5 h-5" />
+               </button>
+            </div>
+            <div className="p-6">
+               {content}
+            </div>
+         </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 md:p-12 space-y-8 font-sans text-gray-900">
+      {renderKpiDetails()}
+      
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button 
+          onClick={onReset}
+          className="p-2.5 bg-white border border-gray-200 shadow-sm hover:bg-gray-50 rounded-full transition-all group"
+          title="Upload new file"
+        >
+          <ArrowLeft className="w-5 h-5 text-gray-400 group-hover:text-gray-700" />
+        </button>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Portfolio Analysis</h1>
+          <p className="text-gray-500 mt-1 font-medium">
+            Performance overview 
+            {selectedYear !== 'All' && ` for ${selectedYear}`}
+          </p>
+        </div>
+      </div>
+        
+      {/* Filters Toolbar - Full Width */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 w-full">
+        <div className="flex flex-col lg:flex-row gap-6 lg:items-center">
+            
+            {/* Icon Section */}
+            <div className="flex items-center gap-3 min-w-fit pb-4 lg:pb-0 border-b lg:border-b-0 lg:border-r border-gray-100 lg:pr-6">
+                <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
+                    <Filter className="w-5 h-5" />
+                </div>
+                <div>
+                    <span className="block text-sm font-bold text-gray-900">Timeframe</span>
+                    <span className="block text-xs text-gray-500 font-medium">Customize your view</span>
+                </div>
+            </div>
+
+            {/* Filter Groups */}
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
+                
+                {/* Year Group */}
+                <div className="flex-grow">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 block px-1">Year</label>
+                    <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
+                        <button
+                          onClick={() => setSelectedYear('All')}
+                          className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                            selectedYear === 'All' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                          }`}
+                        >
+                          All Time
+                        </button>
+                        {availableYears.map(year => (
+                          <button
+                            key={year}
+                            onClick={() => setSelectedYear(year)}
+                            className={`flex-1 min-w-[60px] px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                              selectedYear === year ? 'bg-white text-blue-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                            }`}
+                          >
+                            {year}
+                          </button>
+                        ))}
+                    </div>
+                </div>
+
+            </div>
         </div>
       </div>
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-6">
         <KpiCard 
           title="Net Portfolio Value" 
           value={`€${latest.totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
           subValue="Cash + Assets"
           icon={<Wallet />}
           color="violet"
+          onClick={() => setSelectedKpi('portfolio-value')}
         />
         <KpiCard 
           title="Total Net Return" 
           value={`€${totalReturn.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
           trendValue={`${returnPercent.toFixed(2)}%`}
           trend={returnPercent >= 0 ? 'up' : 'down'}
-          subValue="Cumulative (Unrealized + Realized)"
+          subValue="Cumulative All Time"
           icon={<TrendingUp />}
           color="emerald"
+          onClick={() => setSelectedKpi('total-return')}
+        />
+        <KpiCard 
+          title="Period Net Return" 
+          value={`€${periodReturn.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+          trendValue={`${periodPercent.toFixed(2)}%`}
+          trend={periodReturn >= 0 ? 'up' : 'down'}
+          subValue="Selected Timeframe"
+          icon={<CalendarRange />}
+          color="rose"
+          onClick={() => setSelectedKpi('period-return')}
         />
         <KpiCard 
           title="Realized P&L" 
@@ -171,6 +423,7 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
           subValue={`Divs: €${latest.totalDividends.toFixed(2)}`}
           icon={<DollarSign />}
           color="blue"
+          onClick={() => setSelectedKpi('realized-pnl')}
         />
         <KpiCard 
           title="Unrealized P&L" 
@@ -179,6 +432,7 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
           trend={latest.totalUnrealizedPnL >= 0 ? 'up' : 'down'}
           icon={<Receipt />}
           color="amber"
+          onClick={() => setSelectedKpi('unrealized-pnl')}
         />
       </div>
 
@@ -186,57 +440,57 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Net Value Development */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-white mb-6">Net Value Development</h2>
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900 mb-6 tracking-tight">Net Value Development</h2>
           {filteredSnapshots.length > 0 ? (
             <NetValueChart data={filteredSnapshots} />
           ) : (
-             <div className="h-[350px] flex items-center justify-center text-slate-500">No data for selected period</div>
+             <div className="h-[350px] flex items-center justify-center text-gray-400">No data for selected period</div>
           )}
         </div>
 
         {/* Performance vs Invested */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-white mb-6">Performance vs. Invested Capital</h2>
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900 mb-6 tracking-tight">Performance vs. Invested Capital</h2>
           {filteredSnapshots.length > 0 ? (
              <PerformanceChart data={filteredSnapshots} />
           ) : (
-             <div className="h-[350px] flex items-center justify-center text-slate-500">No data for selected period</div>
+             <div className="h-[350px] flex items-center justify-center text-gray-400">No data for selected period</div>
           )}
         </div>
 
         {/* Realised vs Unrealised Stack */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-white mb-6">Result Breakdown (Cumulative)</h2>
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900 mb-6 tracking-tight">Result Breakdown (Cumulative)</h2>
           {filteredSnapshots.length > 0 ? (
             <PnLChart data={filteredSnapshots} />
           ) : (
-             <div className="h-[300px] flex items-center justify-center text-slate-500">No data for selected period</div>
+             <div className="h-[300px] flex items-center justify-center text-gray-400">No data for selected period</div>
           )}
         </div>
 
         {/* Monthly Cash Flow */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-white mb-6">Monthly Cash Flow</h2>
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900 mb-6 tracking-tight">Monthly Cash Flow</h2>
           {filteredCashFlow.length > 0 ? (
              <CashFlowChart data={filteredCashFlow} />
           ) : (
-             <div className="h-[300px] flex items-center justify-center text-slate-500">No cash flow data for selected period</div>
+             <div className="h-[300px] flex items-center justify-center text-gray-400">No cash flow data for selected period</div>
           )}
         </div>
       </div>
 
       {/* Assets Table (End of selected period) */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
-        <div className="p-6 border-b border-slate-700">
-           <h2 className="text-lg font-semibold text-white">
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100">
+           <h2 className="text-lg font-bold text-gray-900">
              Current Asset Allocation 
-             <span className="ml-2 text-sm font-normal text-slate-400">(End of Selected Period)</span>
+             <span className="ml-2 text-sm font-normal text-gray-400">(End of Selected Period)</span>
            </h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-400">
-            <thead className="bg-slate-800 text-slate-200 uppercase font-medium">
+          <table className="w-full text-left text-sm text-gray-600">
+            <thead className="bg-gray-50 text-gray-500 uppercase font-semibold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Asset</th>
                 <th className="px-6 py-4 text-right">Quantity</th>
@@ -244,12 +498,7 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
                 <th className="px-6 py-4 text-right">Allocation</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-700">
-              {/* Note: In a real app we might want to recalculate asset allocation exactly for the specific filtered end date. 
-                  Currently, useMemo only processes once initially. For dynamic end-of-period holdings, we would need to 
-                  snapshot the holdings at 'latest.timestamp'. 
-                  'latest.holdings' exists in the snapshot! Let's use it. 
-               */}
+            <tbody className="divide-y divide-gray-100">
               {latest.holdings && Object.values(latest.holdings).filter((h: any) => h.quantity > 0.001).length > 0 ? (
                  Object.values(latest.holdings)
                  .filter((h: any) => h.quantity > 0.001)
@@ -260,16 +509,16 @@ const Dashboard: React.FC<DashboardProps> = ({ csvData, onReset }) => {
                  })
                  .sort((a: any, b: any) => b.allocation - a.allocation)
                  .map((asset: any) => (
-                    <tr key={asset.name} className="hover:bg-slate-700/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-white">{asset.name}</td>
-                      <td className="px-6 py-4 text-right">{asset.quantity.toFixed(4)}</td>
-                      <td className="px-6 py-4 text-right">€{asset.val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                      <td className="px-6 py-4 text-right text-emerald-400">{asset.allocation.toFixed(1)}%</td>
+                    <tr key={asset.name} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900">{asset.name}</td>
+                      <td className="px-6 py-4 text-right tabular-nums">{asset.quantity.toFixed(4)}</td>
+                      <td className="px-6 py-4 text-right tabular-nums font-medium">€{asset.val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                      <td className="px-6 py-4 text-right text-emerald-600 font-semibold tabular-nums">{asset.allocation.toFixed(1)}%</td>
                     </tr>
                  ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">No active assets held at the end of this period.</td>
+                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">No active assets held at the end of this period.</td>
                 </tr>
               )}
             </tbody>

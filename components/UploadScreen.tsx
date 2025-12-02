@@ -54,21 +54,21 @@ const UploadScreen: React.FC<UploadScreenProps> = ({ onDataLoaded, sampleData })
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-8">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 p-8">
         <div className="text-center mb-8">
-          <div className="bg-blue-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Upload className="w-8 h-8 text-blue-400" />
+          <div className="bg-blue-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <Upload className="w-8 h-8 text-blue-600" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Upload Portfolio Data</h1>
-          <p className="text-slate-400">Upload your transaction CSV file to analyze your performance.</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">Upload Portfolio Data</h1>
+          <p className="text-gray-500">Upload your transaction CSV file to analyze your performance.</p>
         </div>
 
         <div
-          className={`border-2 border-dashed rounded-xl p-8 mb-6 text-center transition-colors cursor-pointer ${
+          className={`border-2 border-dashed rounded-xl p-10 mb-6 text-center transition-all cursor-pointer ${
             isDragging 
-              ? 'border-blue-500 bg-blue-500/5' 
-              : 'border-slate-600 hover:border-slate-500 hover:bg-slate-700/50'
+              ? 'border-blue-500 bg-blue-50' 
+              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -82,30 +82,30 @@ const UploadScreen: React.FC<UploadScreenProps> = ({ onDataLoaded, sampleData })
             accept=".csv"
             className="hidden"
           />
-          <FileText className="w-10 h-10 text-slate-500 mx-auto mb-4" />
-          <p className="text-slate-300 font-medium mb-1">Click to upload or drag and drop</p>
-          <p className="text-slate-500 text-sm">CSV files only</p>
+          <FileText className="w-10 h-10 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-900 font-semibold mb-1">Click to upload or drag and drop</p>
+          <p className="text-gray-400 text-sm">CSV files only</p>
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-6 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-            <p className="text-sm text-red-300">{error}</p>
+          <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-600 font-medium">{error}</p>
           </div>
         )}
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-700"></div>
+            <div className="w-full border-t border-gray-100"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-slate-800 text-slate-500">Or</span>
+            <span className="px-3 bg-white text-gray-400 font-medium">Or</span>
           </div>
         </div>
 
         <button
           onClick={() => onDataLoaded(sampleData)}
-          className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+          className="w-full bg-gray-900 hover:bg-black text-white font-semibold py-3.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-gray-200"
         >
           <FileText className="w-4 h-4" />
           Load Sample Data (2022)

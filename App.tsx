@@ -7,7 +7,7 @@ const App: React.FC = () => {
   const [csvData, setCsvData] = useState<string | null>(null);
 
   return (
-    <div className="bg-slate-900 min-h-screen">
+    <div className="bg-gray-50 min-h-screen">
       {!csvData ? (
         <UploadScreen 
           onDataLoaded={setCsvData} 
