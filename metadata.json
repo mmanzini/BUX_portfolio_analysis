@@ -1,0 +1,5 @@
+{
+  "name": "Investment Portfolio BI",
+  "description": "A Business Intelligence dashboard visualizing 2022 investment transactions. Features analysis of net value, performance, cash flow, and P&L breakdown.",
+  "requestFramePermissions": []
+}
